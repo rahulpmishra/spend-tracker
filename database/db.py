@@ -83,6 +83,30 @@ def create_user(name, email, password_hash):
         conn.close()
 
 
+def get_user_by_email(email):
+    """Return the user row for this email, or None. The NOCASE column makes the match ASCII case-insensitive."""
+    conn = get_db()
+    try:
+        return conn.execute(
+            "SELECT id, name, email, password_hash FROM users WHERE email = ?",
+            (email,),
+        ).fetchone()
+    finally:
+        conn.close()
+
+
+def get_user_by_id(user_id):
+    """Return the user row for this id (without the password hash), or None."""
+    conn = get_db()
+    try:
+        return conn.execute(
+            "SELECT id, name, email FROM users WHERE id = ?",
+            (user_id,),
+        ).fetchone()
+    finally:
+        conn.close()
+
+
 def _seed_dates(today, n=len(SAMPLE_EXPENSES)):
     """Spread n dates evenly from the 1st of today's month up to today (never in the future)."""
     return [

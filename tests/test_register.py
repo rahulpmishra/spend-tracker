@@ -165,7 +165,6 @@ def test_signup_does_not_sign_the_user_in(client):
         assert set(sess.keys()) <= {"_flashes"}
         assert "user_id" not in sess
 
-    assert client.get("/logout").get_data(as_text=True) == "Logout — coming in Step 3"
     assert client.get("/profile").get_data(as_text=True) == "Profile page — coming in Step 4"
 
 
@@ -378,10 +377,6 @@ def test_login_page_has_no_confirmation_by_default(client):
     html = client.get("/login").get_data(as_text=True)
     assert "auth-success" not in html
     assert SUCCESS_MESSAGE not in html
-
-
-def test_login_is_still_get_only(client):
-    assert client.post("/login", data={"email": "demo@spendly.com", "password": "demo123"}).status_code == 405
 
 
 def test_secret_key_comes_from_environment_with_fallback(monkeypatch):

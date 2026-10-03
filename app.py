@@ -1,25 +1,54 @@
 import os
 import sqlite3
 
-from flask import Flask, flash, redirect, render_template, request, url_for
-from werkzeug.security import generate_password_hash
+from flask import Flask, flash, g, redirect, render_template, request, session, url_for
+from werkzeug.security import check_password_hash, generate_password_hash
 
-from database.db import create_user, get_db, init_db, seed_db
+from database.db import create_user, get_db, get_user_by_email, get_user_by_id, init_db, seed_db
 
 app = Flask(__name__)
 
 # Development fallback only. Set SECRET_KEY in the environment for anything real.
 app.secret_key = os.environ.get("SECRET_KEY") or "spendly-dev-secret-key"
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 
 NAME_MAX = 100
 EMAIL_MAX = 254
 PASSWORD_MIN = 6
 PASSWORD_MAX = 128
 
+LOGIN_FAILED = "Invalid email or password."
+
+# Checked when the email is unknown, so that case costs the same as a wrong password.
+_DUMMY_HASH = generate_password_hash("spendly-dummy-password")
+
 # Make sure the schema and demo data exist before any route is served.
 with app.app_context():
     init_db()
     seed_db()
+
+
+@app.before_request
+def load_current_user():
+    """Put the signed-in user's row on g.user (None when signed out) for routes and templates."""
+    g.user = None
+    if request.endpoint == "static":
+        return
+    user_id = session.get("user_id")
+    if user_id is None:
+        return
+    if isinstance(user_id, int):
+        g.user = get_user_by_id(user_id)
+    if g.user is None:
+        session.clear()  # the account is gone, or the value is not an id
+
+
+@app.after_request
+def no_store_when_signed_in(response):
+    # Keeps the back button from showing a signed-in page after sign-out.
+    if g.get("user") is not None:
+        response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 # ------------------------------------------------------------------ #
@@ -60,6 +89,9 @@ def _registration_error(name, email, password):
 
 @app.route("/register", methods=["GET", "POST"])
 def register():
+    if g.user:
+        return redirect(url_for("landing"))
+
     if request.method == "GET":
         return render_template("register.html")
 
@@ -88,19 +120,54 @@ def register():
     return redirect(url_for("login"))
 
 
-@app.route("/login")
+@app.route("/login", methods=["GET", "POST"])
 def login():
-    return render_template("login.html")
+    if g.user:
+        return redirect(url_for("landing"))
+
+    if request.method == "GET":
+        return render_template("login.html")
+
+    # A missing field counts as empty rather than raising.
+    raw_email = request.form.get("email", "")
+    password = request.form.get("password", "")  # never trimmed, re-rendered or logged
+
+    email = raw_email.strip().lower()
+
+    def form_with_error(message, status):
+        return render_template("login.html", error=message, email=raw_email), status
+
+    if not email:
+        return form_with_error("Please enter your email address.", 400)
+    if not password:
+        return form_with_error("Please enter your password.", 400)
+    # No account can have values this long, so skip the lookup and the hash.
+    if len(email) > EMAIL_MAX or len(password) > PASSWORD_MAX:
+        return form_with_error(LOGIN_FAILED, 401)
+
+    user = get_user_by_email(email)
+    password_ok = check_password_hash(user["password_hash"] if user else _DUMMY_HASH, password)
+    if user is None or not password_ok:
+        # Same message for both, so the form doesn't reveal which emails are registered.
+        return form_with_error(LOGIN_FAILED, 401)
+
+    session.clear()  # nothing from an earlier session carries over
+    session["user_id"] = user["id"]
+    return redirect(url_for("landing"))
+
+
+@app.route("/logout")
+def logout():
+    was_signed_in = g.user is not None
+    session.clear()
+    if was_signed_in:
+        flash("You have been signed out.", "success")
+    return redirect(url_for("login"))
 
 
 # ------------------------------------------------------------------ #
 # Placeholder routes — we will implement these                  #
 # ------------------------------------------------------------------ #
-
-@app.route("/logout")
-def logout():
-    return "Logout — coming in Step 3"
-
 
 @app.route("/profile")
 def profile():

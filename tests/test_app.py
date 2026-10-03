@@ -15,7 +15,6 @@ def test_pages_render(client, path):
 
 
 @pytest.mark.parametrize("path, text", [
-    ("/logout", "Logout — coming in Step 3"),
     ("/profile", "Profile page — coming in Step 4"),
     ("/expenses/add", "Add expense — coming in Step 7"),
     ("/expenses/1/edit", "Edit expense — coming in Step 8"),
