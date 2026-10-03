@@ -69,6 +69,20 @@ def init_db():
         conn.close()
 
 
+def create_user(name, email, password_hash):
+    """Insert one user and return its id. A duplicate email raises sqlite3.IntegrityError."""
+    conn = get_db()
+    try:
+        cursor = conn.execute(
+            "INSERT INTO users (name, email, password_hash) VALUES (?, ?, ?)",
+            (name, email, password_hash),
+        )
+        conn.commit()
+        return cursor.lastrowid
+    finally:
+        conn.close()
+
+
 def _seed_dates(today, n=len(SAMPLE_EXPENSES)):
     """Spread n dates evenly from the 1st of today's month up to today (never in the future)."""
     return [
